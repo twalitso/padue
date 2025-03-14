@@ -37,46 +37,74 @@ void main() async {
   );
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-  runApp(PadueApp());
+  runApp(const PadueApp());
 }
 
 class PadueApp extends StatelessWidget {
+  const PadueApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Padue',
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        colorScheme: ColorScheme.light(
+        scaffoldBackgroundColor: Colors.grey[100],
+        colorScheme: const ColorScheme.light(
           primary: Colors.blue,
           secondary: Colors.orange,
           surface: Colors.white,
+          onPrimary: Colors.white,
+          onSecondary: Colors.black,
         ),
-        textTheme: TextTheme(
+        textTheme: const TextTheme(
+          headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87), // Replaced headline5
           headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
           bodyMedium: TextStyle(fontSize: 16, color: Colors.black87),
           bodySmall: TextStyle(fontSize: 12, color: Colors.grey),
+          labelMedium: TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIconColor: Colors.grey,
+          labelStyle: TextStyle(color: Colors.black54),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.blue,
           ),
         ),
         dialogTheme: DialogTheme(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
       ),
       initialRoute: '/login',
       routes: {
-        '/login': (context) => UserLoginScreen(),
-        '/profile': (context) => ProfileScreen(),
-        '/request': (context) => RequestScreen(),
-        '/provider_login': (context) => ProviderLoginScreen(),
-        '/provider_dashboard': (context) => ProviderDashboard(),
+        '/login': (context) => const UserLoginScreen(),
+        '/profile': (context) =>  ProfileScreen(),
+        '/request': (context) =>  RequestScreen(),
+        '/provider_login': (context) => const ProviderLoginScreen(),
+        '/provider_dashboard': (context) =>  ProviderDashboard(),
         '/request_status': (context) => RequestStatusScreen(),
-        '/subscription': (context) => SubscriptionScreen(),
-        '/search': (context) => SearchScreen(), // Add this
+        '/subscription': (context) =>  SubscriptionScreen(),
+        '/search': (context) =>  SearchScreen(),
       },
     );
   }
