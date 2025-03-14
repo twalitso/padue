@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "614465630907",
+    "project_id": "twalitso",
+    "storage_bucket": "twalitso.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:614465630907:android:008829001a9d83d0d66f9e",
+        "android_client_info": {
+          "package_name": "com.example.duze"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNYpgfqcEjqYO5BLcZL3yqJi0x6ETghVY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:614465630907:android:7cc02eceab7506bbd66f9e",
+        "android_client_info": {
+          "package_name": "com.twalitso.padue"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNYpgfqcEjqYO5BLcZL3yqJi0x6ETghVY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:614465630907:android:700aae44268fb540d66f9e",
+        "android_client_info": {
+          "package_name": "com.twalitso.paduze"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNYpgfqcEjqYO5BLcZL3yqJi0x6ETghVY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
