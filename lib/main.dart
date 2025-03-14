@@ -5,6 +5,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:padue/core/firestore_service.dart';
 import 'package:padue/features/auth/screens/user_login_screen.dart';
 import 'package:padue/features/auth/screens/provider_login_screen.dart';
+import 'package:padue/features/roadside/screens/provider_profile_screen.dart';
+//import 'package:padue/features/roadside/screens/provider_request_screen.dart';
 import 'package:padue/features/roadside/screens/request_screen.dart';
 import 'package:padue/features/roadside/screens/provider_dashboard.dart';
 import 'package:padue/features/roadside/screens/request_status.dart';
@@ -102,9 +104,10 @@ class PadueApp extends StatelessWidget {
         '/request': (context) =>  RequestScreen(),
         '/provider_login': (context) => const ProviderLoginScreen(),
         '/provider_dashboard': (context) =>  ProviderDashboard(),
+        '/provider_profile': (context) =>  ProviderProfileScreen(),
         '/request_status': (context) => RequestStatusScreen(),
         '/subscription': (context) =>  SubscriptionScreen(),
-        '/search': (context) =>  SearchScreen(),
+        '/search': (context) => const SearchScreen(),
       },
     );
   }

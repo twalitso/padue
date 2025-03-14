@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:animations/animations.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:padue/features/roadside/screens/provider_profile_screen.dart';
 import 'dart:io';
 import '../../../core/firestore_service.dart';
 import '../../roadside/models/provider.dart';
@@ -23,6 +24,9 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
   double? _averageRating;
   Map<String, dynamic>? _analytics;
   BannerAd? _bannerAd;
+  String? _profilePicUrl;
+
+
   bool _isAdFree = false;
 
   @override
@@ -30,6 +34,7 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
     super.initState();
     _loadProvider();
     _getProviderLocation();
+     _loadProfilePic();
     _loadAd();
   }
 
@@ -177,7 +182,21 @@ Future<void> _loadProvider() async {
     );
     _bannerAd!.load();
   }
-
+    // Load the profile picture from Firestore
+  Future<void> _loadProfilePic() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _profilePicUrl = await _firestore.getProfilePicUrl(user.uid);
+      setState(() {});
+    }
+  }
+ // Function to open the Profile screen
+  void _navigateToProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ProviderProfileScreen()),
+    );
+  }
   @override
   void dispose() {
     _bannerAd?.dispose();
@@ -216,6 +235,18 @@ Future<void> _loadProvider() async {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Welcome, ${_provider!.name}', style: Theme.of(context).textTheme.headlineMedium),
+                               SizedBox(height: 20),
+            
+            // Profile Picture (Placeholder if not available)
+            Center(
+              child: CircleAvatar(
+                radius: 50,
+                backgroundImage: _profilePicUrl != null
+                    ? NetworkImage(_profilePicUrl!)
+                    : AssetImage('assets/default_profile.png') as ImageProvider,
+                child: _profilePicUrl == null ? Icon(Icons.person, size: 50) : null,
+              ),
+            ),
                                 SizedBox(height: 8),
                                 Text('Type: ${_provider!.type}', style: Theme.of(context).textTheme.bodyMedium),
                                 Text('Verification: ${_provider!.isVerified ? "Verified" : "Unverified"}',
@@ -223,6 +254,13 @@ Future<void> _loadProvider() async {
                                 Text('Average Rating: ${_averageRating?.toStringAsFixed(1) ?? "No ratings yet"} / 5',
                                     style: Theme.of(context).textTheme.bodyMedium),
                                 if (!_provider!.isVerified) ...[
+                                 SizedBox(height: 20),
+
+            // Button to navigate to the Profile screen
+            ElevatedButton(
+              onPressed: _navigateToProfile,
+              child: Text('View Profile'),
+            ),
                                   SizedBox(height: 16),
                                   ScaleTransition(
                                     scale: CurvedAnimation(

@@ -40,7 +40,8 @@ class _UserLoginScreenState extends State<UserLoginScreen> {
       User? user = await _authService.verifyOtp(verificationId, smsCode);
       print('verifyOtp returned: ${user?.uid}, type: ${user.runtimeType}');
       if (user != null) {
-        Navigator.pushReplacementNamed(context, '/profile');
+        //Navigator.pushReplacementNamed(context, '/profile');
+        Navigator.pushReplacementNamed(context, '/request');
       }
     } catch (e) {
       print('OTP verification failed: $e');

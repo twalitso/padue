@@ -261,6 +261,7 @@ Future<void> createRequest(Map<String, dynamic> requestData) async {
     return priorityUntil.toDate().isAfter(DateTime.now());
   }
 
+
   Future<void> grantTemporaryPriority(String uid) async {
     var expiry = Timestamp.fromDate(DateTime.now().add(Duration(hours: 24)));
     await _db.collection('users').doc(uid).set({'priorityUntil': expiry}, SetOptions(merge: true));
@@ -290,7 +291,29 @@ Future<void> createRequest(Map<String, dynamic> requestData) async {
         'avgRating': avgRating,
       });
     }
-
+ // New method to upload the provider's profile picture
+  Future<String> uploadProviderProfilePicture(String providerId, File profilePicture) async {
+    try {
+      // Define the path to store the profile picture in Firebase Storage
+      String path = 'provider_profile_pictures/$providerId/${DateTime.now().toIso8601String()}';
+      
+      // Upload the image file to Firebase Storage
+      UploadTask task = _storage.ref(path).putFile(profilePicture);
+      TaskSnapshot snapshot = await task;
+      
+      // Retrieve the download URL for the uploaded image
+      String profilePictureUrl = await snapshot.ref.getDownloadURL();
+      
+      // Update Firestore with the new profile picture URL
+      await _db.collection('providers').doc(providerId).set({
+        'profilePictureUrl': profilePictureUrl
+      }, SetOptions(merge: true));
+      
+      return profilePictureUrl; // Return the profile picture URL
+    } catch (e) {
+      throw Exception("Failed to upload profile picture: $e");
+    }
+  }
     // Apply filters
     providers = providers
         .where((provider) => provider['type'].toString().toLowerCase().contains(query.toLowerCase()))
@@ -320,4 +343,30 @@ Future<void> createRequest(Map<String, dynamic> requestData) async {
 
     return providers;
   }
+
+  uploadProviderProfilePicture(String providerId, File profilePicture) async {
+  try {
+      // Define the path to store the profile picture in Firebase Storage
+      String path = 'provider_profile_pictures/$providerId/${DateTime.now().toIso8601String()}';
+      
+      // Upload the image file to Firebase Storage
+      UploadTask task = _storage.ref(path).putFile(profilePicture);
+      TaskSnapshot snapshot = await task;
+      
+      // Retrieve the download URL for the uploaded image
+      String profilePictureUrl = await snapshot.ref.getDownloadURL();
+      
+      // Update Firestore with the new profile picture URL
+      await _db.collection('providers').doc(providerId).set({
+        'profilePictureUrl': profilePictureUrl
+      }, SetOptions(merge: true));
+      
+      return profilePictureUrl; // Return the profile picture URL
+    } catch (e) {
+      throw Exception("Failed to upload profile picture: $e");
+    }
+
+  }
+
+  getProfilePicUrl(String uid) {}
 }

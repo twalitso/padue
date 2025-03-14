@@ -152,6 +152,16 @@ class _RequestScreenState extends State<RequestScreen> {
               onPressed: _submitRequest,
               child: Text('Submit Request'),
             ),
+             SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/search'),
+              child: Text('Search Services'),
+            ),
+             SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/profile'),
+              child: Text('My Profile'),
+            ),
           ],
         ),
       ),

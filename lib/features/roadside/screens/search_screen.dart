@@ -4,6 +4,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/firestore_service.dart';
 
 class SearchScreen extends StatefulWidget {
+const SearchScreen({super.key});
+
+
   @override
   _SearchScreenState createState() => _SearchScreenState();
 }
