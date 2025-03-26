@@ -17,6 +17,13 @@
               <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-6203298272391383~6221390463"/>
+            <service
+      android:name="com.google.firebase.messaging.FirebaseMessagingService"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+      </intent-filter>
+    </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

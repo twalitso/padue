@@ -13,136 +13,255 @@ class UserLoginScreen extends StatefulWidget {
 class _UserLoginScreenState extends State<UserLoginScreen> {
   final _authService = AuthService();
   final _firestore = FirestoreService();
-  String phoneNumber = ''; // Single field for full phone number
+  final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
   String verificationId = '';
-  String smsCode = '';
   bool isCodeSent = false;
   bool _isLoading = false;
 
   Future<void> _sendCode() async {
+    if (_phoneController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter a phone number')));
+      return;
+    }
     setState(() => _isLoading = true);
-    await _authService.verifyPhoneNumber(
-      phoneNumber, // Use single phoneNumber directly
-      (vid) {
-        setState(() {
-          verificationId = vid;
-          isCodeSent = true;
-          _isLoading = false;
-        });
-      },
-    );
+    try {
+      await _authService.verifyPhoneNumber(
+        _phoneController.text.trim(),
+        (vid) {
+          if (mounted) { // Ensure widget is still mounted
+            setState(() {
+              verificationId = vid;
+              isCodeSent = true;
+              _isLoading = false;
+            });
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send code: $e')));
+      }
+    }
   }
 
   Future<void> _verifyOtp() async {
+    if (_otpController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter the OTP')));
+      return;
+    }
+    setState(() => _isLoading = true);
     try {
-      setState(() => _isLoading = true);
-      print('Calling verifyOtp with verificationId: $verificationId, smsCode: $smsCode');
-      User? user = await _authService.verifyOtp(verificationId, smsCode);
-      print('verifyOtp returned: ${user?.uid}, type: ${user.runtimeType}');
-      if (user != null) {
-        //Navigator.pushReplacementNamed(context, '/profile');
+      User? user = await _authService.verifyOtp(verificationId, _otpController.text.trim());
+      if (user != null && mounted) {
         Navigator.pushReplacementNamed(context, '/request');
       }
     } catch (e) {
-      print('OTP verification failed: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('OTP verification failed: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('OTP verification failed: $e')));
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  Future<void> _resendOtp() async {
+    setState(() => _isLoading = true);
+    try {
+      await _authService.verifyPhoneNumber(
+        _phoneController.text.trim(),
+        (vid) {
+          if (mounted) {
+            setState(() {
+              verificationId = vid;
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Code resent successfully')));
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to resend code: $e')));
+      }
+    }
+  }
+
+  void _cancelOtp() {
+    setState(() {
+      isCodeSent = false;
+      verificationId = '';
+      _otpController.clear();
+      _isLoading = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('OTP request canceled')));
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _otpController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User Login'),
-        elevation: 0,
-        backgroundColor: Theme.of(context).primaryColor,
+        title: Text('User Login'),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue, Colors.purple],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 40),
-            Text(
-              'Welcome Back!',
-              style: Theme.of(context).textTheme.headlineLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Log in with your phone number',
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 40),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (Widget child, Animation<double> animation) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-              child: !isCodeSent
-                  ? Column(
-                      key: const ValueKey('phoneInput'),
-                      children: [
-                        TextField(
-                          onChanged: (value) => phoneNumber = value,
-                          decoration: const InputDecoration(
-                            labelText: 'Phone Number (e.g., +1234567890)',
-                            prefixIcon: Icon(Icons.phone),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(12)),
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                          ),
-                          keyboardType: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 24),
-                        _isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : ElevatedButton(
-                                onPressed: _sendCode,
-                                child: const Text('Send Code'),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.blue[50]!, Colors.purple[50]!],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(24),
+          child: Card(
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header with Icon
+                  Column(
+                    children: [
+                      Icon(Icons.lock_open, size: 60, color: Colors.purple),
+                      SizedBox(height: 16),
+                      Text(
+                        isCodeSent ? 'Verify OTP' : 'Welcome Back!',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.purple),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        isCodeSent ? 'Enter the code sent to your phone' : 'Login with your phone number',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 32),
+                  // Form Fields
+                  AnimatedSwitcher(
+                    duration: Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+                    child: !isCodeSent
+                        ? Column(
+                            key: ValueKey('phoneInput'),
+                            children: [
+                              TextField(
+                                controller: _phoneController,
+                                decoration: InputDecoration(
+                                  labelText: 'Phone Number',
+                                  hintText: 'e.g., +1234567890',
+                                  prefixIcon: Icon(Icons.phone),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                ),
+                                keyboardType: TextInputType.phone,
                               ),
-                      ],
-                    )
-                  : Column(
-                      key: const ValueKey('otpInput'),
-                      children: [
-                        TextField(
-                          onChanged: (value) => smsCode = value,
-                          decoration: const InputDecoration(
-                            labelText: 'Enter OTP',
-                            prefixIcon: Icon(Icons.lock_outline),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(12)),
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                          ),
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                        ),
-                        const SizedBox(height: 24),
-                        _isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : ElevatedButton(
-                                onPressed: _verifyOtp,
-                                child: const Text('Verify OTP'),
+                              SizedBox(height: 24),
+                              _isLoading
+                                  ? Center(child: CircularProgressIndicator())
+                                  : ElevatedButton(
+                                      onPressed: _sendCode,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.purple,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        padding: EdgeInsets.symmetric(vertical: 20),
+                                      ),
+                                      child: Text('Send Code', style: TextStyle(fontSize: 16)),
+                                    ),
+                            ],
+                          )
+                        : Column(
+                            key: ValueKey('otpInput'),
+                            children: [
+                              TextField(
+                                controller: _otpController,
+                                decoration: InputDecoration(
+                                  labelText: 'OTP',
+                                  hintText: 'Enter 6-digit code',
+                                  prefixIcon: Icon(Icons.lock_outline),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                ),
+                                keyboardType: TextInputType.number,
+                                maxLength: 6,
                               ),
-                      ],
+                              SizedBox(height: 24),
+                              _isLoading
+                                  ? Center(child: CircularProgressIndicator())
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed: _verifyOtp,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.purple,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                                          ),
+                                          child: Text('Verify OTP', style: TextStyle(fontSize: 16)),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: _cancelOtp,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.grey,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                                          ),
+                                          child: Text('Cancel', style: TextStyle(fontSize: 16)),
+                                        ),
+                                      ],
+                                    ),
+                              SizedBox(height: 16),
+                              TextButton(
+                                onPressed: _resendOtp,
+                                child: Text('Resend OTP', style: TextStyle(color: Colors.blue)),
+                              ),
+                            ],
+                          ),
+                  ),
+                  SizedBox(height: 50),
+                  // Switch to Provider Login
+                  Center(
+                    child: TextButton(
+                      onPressed: () => Navigator.pushNamed(context, '/provider_login'),
+                      child: Text(
+                        'Are you a provider? Login here',
+                        style: TextStyle(color: Colors.blue),
+                      ),
                     ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => Navigator.pushNamed(context, '/provider_login'),
-              child: const Text('Switch to Provider Login'),
-            ),
-          ],
+          ),
         ),
       ),
     );

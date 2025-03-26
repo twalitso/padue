@@ -45,6 +45,13 @@ android {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") // Kotlin DSL syntax
     implementation("com.google.firebase:firebase-appcheck-playintegrity:17.1.2") // Add this
+    implementation("com.google.firebase:firebase-auth") // Add this
+    implementation("com.google.firebase:firebase-firestore") // Add this
+    implementation("com.google.android.gms:play-services-ads:23.2.0") // Add this
+    implementation("com.google.android.gms:play-services-location:21.3.0") // Add this
+    implementation ("com.google.firebase:firebase-messaging")
+
+
 }
 
 flutter {
