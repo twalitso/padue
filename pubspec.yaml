@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.2.0+20
 
 environment:
   sdk: ^3.5.3
@@ -38,7 +38,7 @@ dependencies:
   shared_preferences: ^2.2.2  # For local storage
   geolocator: ^11.0.0       # For location
   intl: ^0.19.0             # Date formatting
-  image_picker: ^1.0.7      # Image/video selection
+  wechat_assets_picker: ^9.1.0 # Check latest version on pub.dev # Check latest version on pub.dev
   url_launcher: ^6.2.4 
   geoflutterfire: ^3.0.3
   firebase_messaging: ^15.2.4  # Add for notifications
@@ -56,9 +56,48 @@ dependencies:
   path: ^1.8.3
   http: ^1.2.1 # For sending FCM requests
   googleapis_auth: ^1.4.1
+  flutter_launcher_icons: ^0.13.1
+  badges: ^3.0.3
+  geocoding: ^3.0.0
+  flutter_animate: ^4.5.0
+  google_fonts: ^6.2.1 # For Poppins
+  carousel_slider: ^5.0.0
+  timeago: ^3.7.1
+  video_player: ^2.4.10
+  flutter_map: ^6.2.0
+  latlong2: ^0.9.1
+  fl_chart: ^0.68.0
+  retry: ^3.1.2
+  provider: ^6.0.0
+  flutter_riverpod: ^3.0.3
+  lottie: ^3.2.0
+  flutter_slidable: ^3.1.2
+  flutter_map_cache: ^2.0.0+1
+  flutter_tts: ^3.8.5  # Free TTS
+  connectivity_plus: ^7.0.0
+  path_provider: ^2.1.1   # <-- ADD THIS
+  http_cache_file_store: ^2.0.0 
+  flutter_svg: ^2.1.0
+  onesignal_flutter: ^5.1.2
+  package_info_plus: ^9.0.0
+  version: ^3.0.2
+  flutter_dotenv: ^5.1.0
+  firebase_remote_config: ^5.5.0
+  dart_geohash: ^2.1.0
+  share_plus: ^12.0.1
+  
+  
 
 
+ 
+  
+  
 
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
 
 dev_dependencies:
   flutter_test:
@@ -89,7 +128,8 @@ flutter:
   assets:
     - assets/default_profile.png
     - assets/icon.png
-    
+    - assets/icons/toolbox.svg
+    - .env
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

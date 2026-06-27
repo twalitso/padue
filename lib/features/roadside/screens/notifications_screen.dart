@@ -1,111 +1,199 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:padue/core/widgets/app_bar_widget.dart';
+import 'package:padue/features/roadside/screens/banner_ad_widget.dart';
+import 'package:padue/features/roadside/screens/bottom_nav_bar.dart';
+import 'package:padue/features/roadside/screens/post_detail_screen.dart';
+import 'package:padue/features/roadside/screens/provider_bottom_nav_bar.dart';
+import 'package:padue/core/firestore_service.dart';
+import 'package:padue/features/roadside/models/provider.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   final bool isProvider;
 
-  const NotificationsScreen({required this.isProvider});
+  const NotificationsScreen({super.key, required this.isProvider});
+
+  @override
+  _NotificationsScreenState createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  bool _isAdFree = false;
+  bool _isLoading = true;
+   dynamic profile;
+  String? profilePicUrl;
+   bool _isProviderUser = false;
+    final FirestoreService _firestore = FirestoreService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() => _isLoading = true);
+      var providerDoc = await FirebaseFirestore.instance.collection('providers').doc(user.uid).get();
+      if (providerDoc.exists && mounted) {
+        Provider provider = Provider.fromFirestore(providerDoc);
+         final providerProfile = await _firestore.getProviderProfile(user.uid);
+        setState(() {
+          _isAdFree = provider.adFree;
+          _isLoading = false;
+
+            _isProviderUser = true;
+      
+        profile = providerProfile;
+        profilePicUrl = providerProfile?.profilePicUrl ?? provider.profilePicUrl;
+        });
+      } else {
+        var userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final userProfile = await _firestore.getUserProfile(user.uid);
+        setState(() {
+          _isAdFree = userDoc.exists ? (userDoc.data()?['adFree'] ?? false) : false;
+          _isLoading = false;
+
+           _isProviderUser = false;
+      
+        profile = userProfile;
+        profilePicUrl = profile?.profilePicUrl;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return Scaffold(body: Center(child: Text('Not logged in')));
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text('Not logged in')));
+    }
 
-    final collection = isProvider ? 'providers' : 'users';
+    final collection = widget.isProvider ? 'providers' : 'users';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Notifications'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.blue, isProvider ? Colors.purple : Colors.blueAccent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
+      appBar: AppBarWidget(
+           title:  'Notifications',
+        profilePicUrl:profilePicUrl,
+        showNotifications: true,
+       isProvider: widget.isProvider,
         ),
+        drawer: AppBarWidget.buildDrawer(
+        context: context,
+        isProvider: widget.isProvider,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection(collection)
-            .doc(user.uid)
-            .collection('notifications')
-            .where('type', isNotEqualTo: 'message') // Filter out message notifications
-            .orderBy('type') // Required due to Firestore rules when using isNotEqualTo
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-          final notifications = snapshot.data!.docs;
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection(collection)
+                  .doc(user.uid)
+                  .collection('notifications')
+                  .where('type', isNotEqualTo: 'message')
+                  .orderBy('type')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          if (notifications.isEmpty) {
-            return Center(child: Text('No notifications yet'));
-          }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error loading notifications: ${snapshot.error}'));
+                }
 
-          return ListView.builder(
-            padding: EdgeInsets.all(16),
-            itemCount: notifications.length,
-            itemBuilder: (context, index) {
-              final notification = notifications[index];
-              final data = notification.data() as Map<String, dynamic>;
-              return Card(
-                elevation: 4,
-                margin: EdgeInsets.symmetric(vertical: 8),
-                child: ListTile(
-                  title: Text(data['title'] ?? 'No Title'),
-                  subtitle: Text(data['body'] ?? 'No Body'),
-                  trailing: data['read'] == true
-                      ? null
-                      : Icon(Icons.circle, color: Colors.blue, size: 10),
-                  onTap: () async {
-                    await notification.reference.update({'read': true});
-                    final type = data['type'] as String?;
-                    final id = data['id'] as String?;
+                final notifications = snapshot.data?.docs ?? [];
 
-                    switch (type) {
-                      case 'request':
-                        if (id != null) {
-                          if (isProvider) {
-                            Navigator.pushNamed(context, '/provider_dashboard');
-                          } else {
-                            Navigator.pushNamed(context, '/request_status');
+                if (notifications.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_off, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No notifications yet',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: notifications.length,
+                  itemBuilder: (context, index) {
+                    final notification = notifications[index];
+                    final data = notification.data() as Map<String, dynamic>;
+                    return Card(
+                      elevation: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        title: Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(data['body'] ?? 'No Body'),
+                        trailing: data['read'] == true
+                            ? null
+                            : const Icon(Icons.circle, color: Colors.blue, size: 10),
+                        onTap: () async {
+                          await notification.reference.update({'read': true});
+                          final type = data['type'] as String?;
+                          final id = data['id'] as String?;
+
+                          switch (type) {
+                            case 'request':
+                            case 'status_update':
+                              if (id != null) {
+                                Navigator.pushNamed(
+                                  context,
+                                  widget.isProvider ? '/provider_dashboard' : '/request_status',
+                                );
+                              }
+                              break;
+                            case 'profile_update':
+                              Navigator.pushNamed(
+                                context,
+                                widget.isProvider ? '/provider_profile' : '/profile',
+                              );
+                              break;
+                            case 'payment':
+                              Navigator.pushNamed(context, '/subscription');
+                              break;
+                            case 'comment':
+                            case 'like':
+                              if (id != null) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => PostDetailScreen(postId: id),
+                                  ),
+                                );
+                              }
+                              break;
+                            default:
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Tapped: ${data['title']}')),
+                              );
                           }
-                        }
-                        break;
-
-                      case 'status_update':
-                        if (id != null) {
-                          if (isProvider) {
-                            Navigator.pushNamed(context, '/provider_dashboard');
-                          } else {
-                            Navigator.pushNamed(context, '/request_status');
-                          }
-                        }
-                        break;
-
-                      case 'profile_update':
-                        Navigator.pushNamed(context, isProvider ? '/provider_profile' : '/profile');
-                        break;
-
-                      case 'payment':
-                        Navigator.pushNamed(context, '/subscription');
-                        break;
-
-                      default:
-                        // Handle unknown non-message types
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Tapped: ${data['title']}')),
-                        );
-                        break;
-                    }
+                        },
+                      ),
+                    );
                   },
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isAdFree) const BannerAdWidget(),
+        /**   widget.isProvider
+              ? const ProviderBottomNavBar(currentIndex: 3)
+              : const BottomNavBar(currentIndex: 3),*/
+        ],
       ),
     );
   }

@@ -1,51 +1,65 @@
 import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:padue/core/widgets/app_bar_widget.dart';
+import 'package:padue/features/roadside/screens/banner_ad_widget.dart';
+import 'package:padue/features/roadside/screens/bottom_nav_bar.dart';
+import 'package:padue/features/roadside/screens/provider_bottom_nav_bar.dart';
 import 'chat_screen.dart';
-import '../../../core/utils.dart';
 
 class InboxScreen extends StatefulWidget {
   final bool isProvider;
-
-  InboxScreen({this.isProvider = false});
+  const InboxScreen({super.key, this.isProvider = false});
 
   @override
-  _InboxScreenState createState() => _InboxScreenState();
+  State<InboxScreen> createState() => _InboxScreenState();
 }
 
-class _InboxScreenState extends State<InboxScreen>  with WidgetsBindingObserver {
+class _InboxScreenState extends State<InboxScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
+
+  bool _isLoading = true;
+  bool _isAdFree = false;
+  String? profilePicUrl;
   String _searchQuery = '';
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  /// CACHES
+  final Map<String, Map<String, dynamic>> _profileCache = {};
+  final Set<String> _loadingProfiles = {};
 
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addObserver(this);
+
     _searchController.addListener(() {
-      setState(() => _searchQuery = _searchController.text.toLowerCase());
+      _searchQuery = _searchController.text.toLowerCase();
+      setState(() {});
     });
-    updateLastActive();
-   _setupNotifications();
-    saveFcmToken(); // From utils.dart
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null && mounted) {
+
+    _loadUserProfile();
+    _setupNotifications();
+
+    FirebaseMessaging.onMessage.listen((message) {
+      if (message.notification != null) {
         _showNotification(message);
       }
     });
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      updateLastActive();
-      saveFcmToken(); // From utils.dart
-    }
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
+
+  /* ───────────────────── NOTIFICATIONS ───────────────────── */
 
   Future<void> _setupNotifications() async {
     const channel = AndroidNotificationChannel(
@@ -53,336 +67,334 @@ class _InboxScreenState extends State<InboxScreen>  with WidgetsBindingObserver 
       'High Importance Notifications',
       importance: Importance.max,
     );
-    await _notificationsPlugin.initialize(
+
+    await _notifications.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
-      onDidReceiveNotificationResponse: (details) {
-        final data = jsonDecode(details.payload ?? '{}');
-        if (data['type'] == 'message') {
-          setState(() {}); // Refresh inbox
-        }
-      },
     );
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+
+    await _notifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
   }
 
   void _showNotification(RemoteMessage message) {
-    final notification = message.notification!;
-    _notificationsPlugin.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
+    final n = message.notification!;
+    _notifications.show(
+      n.hashCode,
+      n.title,
+      n.body,
+      const NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',
           importance: Importance.max,
           priority: Priority.high,
         ),
-        iOS: const DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(),
       ),
       payload: jsonEncode(message.data),
     );
   }
-  Future<String> _getLastMessage(String chatId) async {
-    var messages = await FirebaseFirestore.instance
-        .collection('chat_requests')
-        .doc(chatId)
-        .collection('messages')
-        .orderBy('timestamp', descending: true)
-        .limit(1)
-        .get();
-    return messages.docs.isNotEmpty ? messages.docs.first['text'] : 'No messages yet';
+
+  /* ───────────────────── PROFILE ───────────────────── */
+
+Future<void> _loadUserProfile() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    if (mounted) setState(() => _isLoading = false);
+    return;
   }
 
-  Future<int> _getUnreadCount(String chatId, String userId) async {
-    var messages = await FirebaseFirestore.instance
-        .collection('chat_requests')
-        .doc(chatId)
-        .collection('messages')
-        .where('senderId', isNotEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .get();
-    return messages.docs.length;
-  }
-
-  Future<void> _openChat(String chatId, String userId) async {
-    await _markMessagesAsRead(chatId, userId);
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => ChatScreen(requestId: chatId)),
-    );
-    if (result == true) setState(() {});
-  }
-
-  Future<bool> _isOnline(String otherPartyId) async {
-    var doc = await FirebaseFirestore.instance
-        .collection(widget.isProvider ? 'users' : 'providers')
-        .doc(otherPartyId)
-        .get();
-    var lastActive = doc.data()?['lastActive'] as Timestamp?;
-    if (lastActive == null) return false;
-    return DateTime.now().difference(lastActive.toDate()).inMinutes < 5;
-  }
-
-  Future<void> _markMessagesAsRead(String chatId, String userId) async {
-    var unreadMessages = await FirebaseFirestore.instance
-        .collection('chat_requests')
-        .doc(chatId)
-        .collection('messages')
-        .where('senderId', isNotEqualTo: userId)
-        .where('read', isEqualTo: false)
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection(widget.isProvider ? 'providers' : 'users')
+        .doc(user.uid)
         .get();
 
-    for (var doc in unreadMessages.docs) {
-      await doc.reference.update({'read': true});
+    if (mounted) {
+      setState(() {
+        _isAdFree = doc.data()?['adFree'] ?? false;
+        profilePicUrl = doc.data()?['profilePicUrl'];
+        _isLoading = false; // ← ADD THIS HERE (critical)
+      });
     }
+  } catch (e) {
+    debugPrint('Profile load error: $e');
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+}
+
+  Future<void> _loadProfileOnce(String uid, bool isProvider) async {
+    if (_profileCache.containsKey(uid) || _loadingProfiles.contains(uid)) {
+      return;
+    }
+
+    _loadingProfiles.add(uid);
+
+    final doc = await FirebaseFirestore.instance
+        .collection(isProvider ? 'providers' : 'users')
+        .doc(uid)
+        .get();
+
+    _profileCache[uid] = doc.data() ??
+        {
+          'name': 'Unknown',
+          'profilePicUrl': null,
+        };
+
+    _loadingProfiles.remove(uid);
+
+    if (mounted) setState(() {});
+  }
+
+  /* ───────────────────── CHAT ACTIONS ───────────────────── */
+
+  Future<void> _openChat(String chatId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final unreadSnap = await FirebaseFirestore.instance
+        .collection('chat_requests')
+        .doc(chatId)
+        .collection('messages')
+        .where('senderId', isNotEqualTo: user.uid)
+        .where('read', isEqualTo: false)
+        .get();
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (final d in unreadSnap.docs) {
+      batch.update(d.reference, {'read': true});
+    }
+    await batch.commit();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(requestId: chatId),
+      ),
+    );
   }
 
   Future<void> _archiveChat(String chatId) async {
-    await FirebaseFirestore.instance.collection('chat_requests').doc(chatId).update({'status': 'archived'});
+    await FirebaseFirestore.instance
+        .collection('chat_requests')
+        .doc(chatId)
+        .update({'status': 'archived'});
   }
+
+  /* ───────────────────── UI ───────────────────── */
 
   @override
   Widget build(BuildContext context) {
-    User? user = FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: Text('Inbox')),
-        body: Center(child: Text('Please sign in.')),
-      );
+      return const Scaffold(body: Center(child: Text('Please sign in')));
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Inbox'),
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.blue, Colors.purple],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(60),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search chats...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: Colors.grey[100],
-              ),
-            ),
-          ),
-        ),
+      backgroundColor: Colors.grey[50],
+      appBar: AppBarWidget(
+        title: 'Inbox',
+        profilePicUrl: profilePicUrl,
+        showNotifications: true,
+        isProvider: widget.isProvider,
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue[50]!, Colors.purple[50]!],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('chat_requests')
-              .where(widget.isProvider ? 'providerId' : 'userId', isEqualTo: user.uid)
-              .where('status', isEqualTo: 'accepted')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-
-            var chats = snapshot.data!.docs;
-            if (chats.isEmpty) {
-              return Center(
-                child: Card(
-                  elevation: 8,
-                  margin: EdgeInsets.all(16),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('No chats found', style: Theme.of(context).textTheme.bodyLarge),
-                      ],
+      drawer:
+          AppBarWidget.buildDrawer(context: context, isProvider: widget.isProvider),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF6200)),
+            )
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(0),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search conversations...',
+                      prefixIcon:
+                          const Icon(Icons.search, color: Color(0xFFFF6200)),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),
-              );
-            }
-
-            var filteredChats = chats.where((chat) {
-              var otherPartyId = widget.isProvider ? chat['userId'] : chat['providerId'];
-              return otherPartyId.toLowerCase().contains(_searchQuery) ||
-                  chat.id.toLowerCase().contains(_searchQuery);
-            }).toList();
-
-            return ListView.builder(
-              padding: EdgeInsets.all(16),
-              itemCount: filteredChats.length,
-              itemBuilder: (context, index) {
-                var chat = filteredChats[index];
-                var chatId = chat.id;
-                var otherPartyId = widget.isProvider ? chat['userId'] : chat['providerId'];
-
-                return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection(widget.isProvider ? 'users' : 'providers')
-                      .doc(otherPartyId)
-                      .get(),
-                  builder: (context, otherPartySnapshot) {
-                    if (!otherPartySnapshot.hasData) return SizedBox.shrink();
-
-                    var otherParty = otherPartySnapshot.data!.data() as Map<String, dynamic>;
-                    var name = otherParty['name'] ?? 'Unknown';
-
-                    return FutureBuilder<String>(
-                      future: _getLastMessage(chatId),
-                      builder: (context, messageSnapshot) {
-                        var lastMessage = messageSnapshot.data ?? 'Loading...';
-
-                        return FutureBuilder<int>(
-                          future: _getUnreadCount(chatId, user.uid),
-                          builder: (context, unreadSnapshot) {
-                            int unreadCount = unreadSnapshot.data ?? 0;
-
-                            return FutureBuilder<bool>(
-                              future: _isOnline(otherPartyId),
-                              builder: (context, onlineSnapshot) {
-                                bool isOnline = onlineSnapshot.data ?? false;
-
-                                return Dismissible(
-                                  key: Key(chatId),
-                                  background: Container(
-                                    color: Colors.orange,
-                                    child: Icon(Icons.archive, color: Colors.white),
-                                    alignment: Alignment.centerLeft,
-                                    padding: EdgeInsets.only(left: 16),
-                                  ),
-                                  secondaryBackground: Container(
-                                    color: Colors.red,
-                                    child: Icon(Icons.delete, color: Colors.white),
-                                    alignment: Alignment.centerRight,
-                                    padding: EdgeInsets.only(right: 16),
-                                  ),
-                                  onDismissed: (direction) async {
-                                    if (direction == DismissDirection.startToEnd) {
-                                      await _archiveChat(chatId);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('$name archived')),
-                                      );
-                                    } else {
-                                      await FirebaseFirestore.instance.collection('chat_requests').doc(chatId).delete();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('$name chat deleted')),
-                                      );
-                                    }
-                                  },
-                                  child: Card(
-                                    elevation: 8,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    margin: EdgeInsets.symmetric(vertical: 8),
-                                    child: ListTile(
-                                      leading: Stack(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 24,
-                                            backgroundImage: otherParty['profilePicUrl'] != null
-                                                ? NetworkImage(otherParty['profilePicUrl'])
-                                                : AssetImage('assets/default_profile.png') as ImageProvider,
-                                          ),
-                                          if (isOnline)
-                                            Positioned(
-                                              right: 0,
-                                              bottom: 0,
-                                              child: Container(
-                                                width: 12,
-                                                height: 12,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(color: Colors.white, width: 2),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      title: Text(
-                                        name,
-                                        style: TextStyle(
-                                          fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        lastMessage,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      trailing: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(_formatTimestamp(chat['createdAt'])),
-                                          if (unreadCount > 0)
-                                            Container(
-                                              margin: EdgeInsets.only(top: 4),
-                                              padding: EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.blue,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Text(
-                                                unreadCount.toString(),
-                                                style: TextStyle(color: Colors.white, fontSize: 12),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      onTap: () => _openChat(chatId, user.uid),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chat_requests')
+                        .where(widget.isProvider ? 'providerId' : 'userId',
+                            isEqualTo: user.uid)
+                        .where('status', whereIn: ['pending', 'accepted'])
+                        .orderBy('lastMessageAt', descending: true)
+                        .snapshots(),
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                              color: Color(0xFFFF6200)),
                         );
-                      },
-                    );
-                  },
-                );
-              },
-            );
-          },
-        ),
+                      }
+
+                      final chats = snap.data!.docs.where((doc) {
+                        final otherId = widget.isProvider
+                            ? doc['userId']
+                            : doc['providerId'];
+                        return otherId
+                                .toString()
+                                .toLowerCase()
+                                .contains(_searchQuery) ||
+                            doc.id.toLowerCase().contains(_searchQuery);
+                      }).toList();
+
+                      if (chats.isEmpty) return _emptyState();
+
+                      /// preload profiles ONCE
+                      for (final chat in chats) {
+                        final otherId = widget.isProvider
+                            ? chat['userId']
+                            : chat['providerId'];
+                        _loadProfileOnce(otherId, !widget.isProvider);
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(0),
+                        itemCount: chats.length,
+                        itemBuilder: (context, i) {
+                          final chat = chats[i];
+                          final chatId = chat.id;
+                          final otherId = widget.isProvider
+                              ? chat['userId']
+                              : chat['providerId'];
+
+                          final profile = _profileCache[otherId] ??
+                              {'name': 'Loading...', 'profilePicUrl': null};
+
+                          return KeyedSubtree(
+                            key: ValueKey(chatId),
+                            child: Dismissible(
+                              key: ValueKey('$chatId-dismiss'),
+                              background:
+                                  _swipeBg(Colors.orange, Icons.archive, 'Archive'),
+                              secondaryBackground:
+                                  _swipeBg(Colors.red, Icons.delete, 'Delete'),
+                              onDismissed: (d) {
+                                if (d == DismissDirection.startToEnd) {
+                                  _archiveChat(chatId);
+                                } else {
+                                  FirebaseFirestore.instance
+                                      .collection('chat_requests')
+                                      .doc(chatId)
+                                      .delete();
+                                }
+                              },
+                              child: _chatTile(
+                                name: profile['name'],
+                                pic: profile['profilePicUrl'],
+                                lastMessage:
+                                    chat['lastMessage'] ?? 'Sent a message',
+                                time: (chat['lastMessageTime'] as Timestamp?)
+                                        ?.toDate() ??
+                                    DateTime.now(),
+                                unread: chat['unreadCount'] ?? 0,
+                                onTap: () => _openChat(chatId),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isAdFree) const BannerAdWidget(),
+          widget.isProvider
+              ? const ProviderBottomNavBar(currentIndex: 3)
+              : const BottomNavBar(currentIndex: 3),
+        ],
       ),
     );
   }
 
-  String _formatTimestamp(Timestamp timestamp) {
-    DateTime date = timestamp.toDate();
-    DateTime now = DateTime.now();
-    if (date.day == now.day && date.month == now.month && date.year == now.year) {
-      return '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    }
-    return '${date.day}/${date.month}';
+  /* ───────────────────── COMPONENTS ───────────────────── */
+
+  Widget _chatTile({
+    required String name,
+    required String? pic,
+    required String lastMessage,
+    required DateTime time,
+    required int unread,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: ListTile(
+        onTap: onTap,
+        leading: CircleAvatar(
+          radius: 26,
+          backgroundImage: pic != null
+              ? NetworkImage(pic)
+              : const AssetImage('assets/default_profile.png')
+                  as ImageProvider,
+        ),
+        title: Text(name,
+            style: GoogleFonts.poppins(
+                fontWeight:
+                    unread > 0 ? FontWeight.w600 : FontWeight.w500)),
+        subtitle: Text(lastMessage,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: unread > 0
+            ? CircleAvatar(
+                radius: 12,
+                backgroundColor: const Color(0xFFFF6200),
+                child: Text('$unread',
+                    style: const TextStyle(color: Colors.white, fontSize: 11)),
+              )
+            : null,
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-     WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
+  Widget _swipeBg(Color c, IconData i, String t) {
+    return Container(
+      color: c,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(i, color: Colors.white),
+          Text(t, style: const TextStyle(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
+          SizedBox(height: 16),
+          Text('No conversations yet'),
+        ],
+      ),
+    );
   }
 }

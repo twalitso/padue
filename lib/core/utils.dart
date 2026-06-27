@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:padue/core/firestore_service.dart'; // Assuming this is where getUserRole lives
 import 'package:googleapis_auth/auth_io.dart';
 
@@ -11,6 +13,9 @@ import 'package:padue/core/firestore_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+
+
+
 Future<void> updateLastActive() async {
   User? user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
@@ -18,25 +23,206 @@ Future<void> updateLastActive() async {
   final firestore = FirestoreService();
   try {
     final role = await firestore.getUserRole(user.uid);
-    print('Updating lastActive for UID: ${user.uid}, role: $role');
+    
 
     if (role == 'user') {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'lastActive': FieldValue.serverTimestamp(),
       });
-      print('Updated lastActive in users collection');
+      
     } else if (role == 'provider') {
       await FirebaseFirestore.instance.collection('providers').doc(user.uid).update({
         'lastActive': FieldValue.serverTimestamp(),
       });
-      print('Updated lastActive in providers collection');
+      
     } else {
-      print('No valid role found, skipping lastActive update');
+    
     }
   } catch (e) {
-    print('Error updating lastActive: $e');
+    
   }
 }
+
+
+
+Future<void> updateProviderLastActive() async {
+  User? user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final firestore = FirestoreService();
+  try {
+   
+      await FirebaseFirestore.instance.collection('providers').doc(user.uid).update({
+        'lastActive': FieldValue.serverTimestamp(),
+      });
+      
+  
+  } catch (e) {
+    
+  }
+}
+
+
+Future<void> saveProviderFcmToken() async {
+  User? user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final messaging = FirebaseMessaging.instance;
+  final token = await messaging.getToken();
+  if (token == null) return;
+
+  final firestore = FirestoreService();
+ 
+    await FirebaseFirestore.instance.collection('providers').doc(user.uid).set(
+      {'fcmToken': token},
+      SetOptions(merge: true),
+    );
+  
+}
+
+
+/// Save OneSignal subscription ID for user
+Future<void> saveUserOneSignalSubscriptionIdold(String uid) async {
+  final subscriptionId = OneSignal.User.pushSubscription.id;
+  if (subscriptionId != null && subscriptionId.isNotEmpty) {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set({'oneSignalSubscriptionId': subscriptionId}, SetOptions(merge: true));
+    print('Saved user subscription ID: $subscriptionId');
+  }
+}
+
+
+Future<void> saveUserOneSignalSubscriptionId(String uid) async {
+  // Try immediately
+  final subscriptionId = OneSignal.User.pushSubscription.id;
+
+  if (subscriptionId != null && subscriptionId.isNotEmpty) {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set(
+      {'oneSignalSubscriptionId': subscriptionId},
+      SetOptions(merge: true),
+    );
+
+   // debugPrint('Saved OneSignal subscription ID: $subscriptionId');
+    return;
+  }
+
+  // Listen if not available yet
+  OneSignal.User.pushSubscription.addObserver((state) {
+    final id = state.current?.id;
+    if (id != null && id.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .set(
+        {'oneSignalSubscriptionId': id},
+        SetOptions(merge: true),
+      );
+
+  //    debugPrint('Saved OneSignal subscription ID (observer): $id');
+    }
+  });
+}
+
+
+
+/// Save OneSignal subscription ID for provider
+Future<void> saveProviderOneSignalSubscriptionIdold(String uid) async {
+  final subscriptionId = OneSignal.User.pushSubscription.id;
+  if (subscriptionId != null && subscriptionId.isNotEmpty) {
+    await FirebaseFirestore.instance
+        .collection('providers')
+        .doc(uid)
+        .set({'oneSignalSubscriptionId': subscriptionId}, SetOptions(merge: true));
+    print('Saved provider subscription ID: $subscriptionId');
+  }
+}
+
+
+Future<void> saveProviderOneSignalSubscriptionId(String uid) async {
+  // Try immediately
+  final subscriptionId = OneSignal.User.pushSubscription.id;
+
+  if (subscriptionId != null && subscriptionId.isNotEmpty) {
+    await FirebaseFirestore.instance
+        .collection('providers')
+        .doc(uid)
+        .set(
+      {'oneSignalSubscriptionId': subscriptionId},
+      SetOptions(merge: true),
+    );
+
+ //   debugPrint('Saved OneSignal subscription ID: $subscriptionId');
+    return;
+  }
+
+  // Listen if not available yet
+  OneSignal.User.pushSubscription.addObserver((state) {
+    final id = state.current?.id;
+    if (id != null && id.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('providers')
+          .doc(uid)
+          .set(
+        {'oneSignalSubscriptionId': id},
+        SetOptions(merge: true),
+      );
+
+    //  debugPrint('Saved OneSignal subscription ID (observer): $id');
+    }
+  });
+}
+
+
+
+
+
+Future<void> sendOneSignalNotification({
+  required List<String> playerIds,
+  required String title,
+  required String body,
+  Map<String, dynamic> data = const {},
+}) async {
+  String oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID']!;//'aa6821d3-e2ec-45d5-828f-fcae178accf7';
+   String restApiKey = dotenv.env['ONESIGNAL_REST_API_KEY']!;
+
+  final url = Uri.parse('https://onesignal.com/api/v1/notifications');
+
+  final headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Authorization': 'Basic $restApiKey',
+  };
+
+  final payload = {
+    'app_id': oneSignalAppId,
+    'include_player_ids': playerIds,
+    'headings': {'en': title},
+    'contents': {'en': body},
+    'data': data,
+  };
+
+  try {
+    final response =
+        await http.post(url, headers: headers, body: jsonEncode(payload));
+
+    if (response.statusCode == 200) {
+      print('✅ OneSignal notification sent successfully');
+    } else {
+      print('❌ Failed to send notification: ${response.body}');
+    }
+  } catch (e) {
+    print('⚠️ Error sending notification: $e');
+  }
+}
+
+
+
+
+
 
 Future<void> saveFcmToken() async {
   User? user = FirebaseAuth.instance.currentUser;
@@ -144,5 +330,5 @@ Future<void> sendFcmNotificationV1({
     body: jsonEncode(payload),
   );
 
-  print('Response: ${response.statusCode} - ${response.body}');
+  
 }

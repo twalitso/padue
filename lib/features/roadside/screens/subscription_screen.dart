@@ -1,234 +1,556 @@
-import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:padue/core/admob_config.dart';
+import 'package:intl/intl.dart';
 import 'package:padue/core/firestore_service.dart';
+import 'package:padue/core/widgets/app_bar_widget.dart';
+import 'package:padue/features/roadside/models/provider.dart';
+import 'package:padue/features/roadside/screens/banner_ad_widget.dart';
+import 'package:padue/features/roadside/screens/bottom_nav_bar.dart';
+import 'package:padue/features/roadside/screens/provider_bottom_nav_bar.dart';
+import '../../../core/admob_config.dart';
 
 class SubscriptionScreen extends StatefulWidget {
+  const SubscriptionScreen({super.key});
+
   @override
-  _SubscriptionScreenState createState() => _SubscriptionScreenState();
+  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen>  with WidgetsBindingObserver {
-  final _firestore = FirestoreService();
-  final InAppPurchase _iap = InAppPurchase.instance;
-  List<Map<String, dynamic>> _subscriptionPackages = [];
-  List<ProductDetails> _products = [];
+class _SubscriptionScreenState extends State<SubscriptionScreen>
+    with TickerProviderStateMixin {
+  final FirestoreService _firestore = FirestoreService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  bool _isProvider = false;
   bool _isAdFree = false;
-  bool _hasTemporaryPriority = false;
-  RewardedAd? _rewardedAd;
   bool _isLoading = true;
+  bool _isAdLoading = false;
+  RewardedAd? _rewardedAd;
+
+  Timestamp? _subscriptionEnd;
+  Timestamp? _priorityUntil;
+
+  late AnimationController _pulseController;
+
+
+  
+  bool _isProviderUser = false;
+  
+   dynamic profile;
+  String? profilePicUrl;
 
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addObserver(this);
-    _loadSubscriptionStatus();
-    _loadProductsAndPackages();
+    _pulseController = AnimationController(vsync: this, duration: 2.seconds)
+      ..repeat();
+    _loadUserData();
+     _loadProfile();
     _loadRewardedAd();
   }
- 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // Refresh data or resources
 
-     _loadSubscriptionStatus();
-    _loadProductsAndPackages();
-    _loadRewardedAd();
-  }}
-  Future<void> _loadSubscriptionStatus() async {
+
+Future<void> _loadProfile() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      _isAdFree = await _firestore.isAdFree(user.uid);
-      _hasTemporaryPriority = await _firestore.hasTemporaryPriority(user.uid);
-      setState(() {});
+      setState(() => _isLoading = true);
+      var providerDoc = await FirebaseFirestore.instance.collection('providers').doc(user.uid).get();
+      if (providerDoc.exists && mounted) {
+        Provider provider = Provider.fromFirestore(providerDoc);
+        final providerProfile = await _firestore.getProviderProfile(user.uid);
+        setState(() {
+          _isProviderUser = true;
+          _isAdFree = provider.adFree;
+        
+          _isLoading = false;
+           profilePicUrl = providerProfile?.profilePicUrl ?? provider.profilePicUrl;
+        });
+      } else {
+        var userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final userProfile = await _firestore.getUserProfile(user.uid);
+        setState(() {
+          _isProviderUser = false;
+          _isAdFree = userDoc.exists ? (userDoc.data()?['adFree'] ?? false) : false;
+         
+          _isLoading = false;
+           profile = userProfile;
+        profilePicUrl = profile?.profilePicUrl;
+        });
+      }
     }
   }
 
-  Future<void> _loadProductsAndPackages() async {
-    final bool available = await _iap.isAvailable();
-    if (!available) {
+  // ────────────────────── CORE LOGIC ──────────────────────
+  Future<void> _loadUserData() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final isProviderDoc = await FirebaseFirestore.instance
+        .collection('providers')
+        .doc(user.uid)
+        .get();
+
+    final collection = isProviderDoc.exists ? 'providers' : 'users';
+    final doc = await FirebaseFirestore.instance
+        .collection(collection)
+        .doc(user.uid)
+        .get();
+
+    if (!doc.exists) {
       setState(() => _isLoading = false);
       return;
     }
 
-    // Fetch packages from Firestore
-    List<Map<String, dynamic>> packages = await _firestore.getSubscriptionPackages();
-    Set<String> productIds = packages.map((p) => p['productId'] as String).toSet();
+    final data = doc.data()!;
+    final endDate = data['subscriptionEnd'] as Timestamp?;
+    final priorityDate = data['priorityUntil'] as Timestamp?;
 
-    // Fetch product details from IAP
-    final ProductDetailsResponse response = await _iap.queryProductDetails(productIds);
+    // Auto-expire logic (runs silently)
+    await _checkAndUpdateSubscriptionStatus(collection, user.uid, endDate, priorityDate);
+
+    // Refresh data after auto-update
+    final freshDoc = await FirebaseFirestore.instance
+        .collection(collection)
+        .doc(user.uid)
+        .get();
+
+    final freshData = freshDoc.data()!;
     setState(() {
-      _subscriptionPackages = packages;
-      _products = response.productDetails;
+     // _isProvider = isProviderDoc.exists;
+      _isAdFree = freshData['adFree'] ?? false;
+      _subscriptionEnd = freshData['subscriptionEnd'] as Timestamp?;
+      _priorityUntil = freshData['priorityUntil'] as Timestamp?;
       _isLoading = false;
-    });
-
-    // Listen for purchase updates
-    _iap.purchaseStream.listen((purchases) {
-      purchases.forEach((purchase) async {
-        if (purchase.status == PurchaseStatus.purchased) {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await _firestore.setAdFree(user.uid, true);
-            setState(() => _isAdFree = true);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Subscription activated!')),
-            );
-          }
-          await _iap.completePurchase(purchase);
-        }
-      });
     });
   }
 
+  Future<void> _checkAndUpdateSubscriptionStatus(
+    String collection,
+    String uid,
+    Timestamp? subEnd,
+    Timestamp? priorityEnd,
+  ) async {
+    final now = Timestamp.now();
+    bool needsUpdate = false;
+    Map<String, dynamic> updateData = {};
+
+    if (subEnd != null && subEnd.toDate().isBefore(now.toDate())) {
+      updateData['adFree'] = false;
+      updateData['subscriptionEnd'] = null;
+      needsUpdate = true;
+    }
+
+    if (priorityEnd != null && priorityEnd.toDate().isBefore(now.toDate())) {
+      updateData['priorityUntil'] = null;
+      if (subEnd == null || subEnd.toDate().isBefore(now.toDate())) {
+        updateData['adFree'] = false;
+      }
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      await FirebaseFirestore.instance
+          .collection(collection)
+          .doc(uid)
+          .update(updateData);
+    }
+  }
+
   void _loadRewardedAd() {
+    setState(() => _isAdLoading = true);
     RewardedAd.load(
-      adUnitId: AdmobConfig().getAdUnitId('rewarded') ?? 'ca-app-pub-3940256099942544/5224354917',
-      request: AdRequest(),
+      adUnitId: AdmobConfig().rewarded,
+      request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          _rewardedAd = ad;
-          _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
-            onAdDismissedFullScreenContent: (ad) => ad.dispose(),
-            onAdFailedToShowFullScreenContent: (ad, error) => ad.dispose(),
-          );
+        onAdLoaded: (ad) => setState(() => {_rewardedAd = ad, _isAdLoading = false}),
+        onAdFailedToLoad: (error) {
+          debugPrint('Rewarded ad failed: $error');
+          setState(() => {_rewardedAd = null, _isAdLoading = false});
         },
-        onAdFailedToLoad: (error) => print('Rewarded ad failed to load: $error'),
       ),
     );
   }
 
   Future<void> _showRewardedAd() async {
-    if (_rewardedAd != null) {
-      _rewardedAd!.show(
-        onUserEarnedReward: (ad, reward) async {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await _firestore.grantTemporaryPriority(user.uid);
-            setState(() => _hasTemporaryPriority = true);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('You earned 24 hours of priority!')),
-            );
-          }
-        },
-      );
-      _rewardedAd = null;
-      _loadRewardedAd();
-    } else {
+    if (_rewardedAd == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ad not ready yet, please wait.')),
+        const SnackBar(content: Text('Ad not ready. Try again.')),
       );
+      return;
     }
+
+   _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+  onAdDismissedFullScreenContent: (ad) {
+    ad.dispose();
+    _rewardedAd = null;
+    _loadRewardedAd();
+  },
+  onAdFailedToShowFullScreenContent: (ad, error) {
+    ad.dispose();
+    _rewardedAd = null;
+    _loadRewardedAd();
+  },
+);
+
+
+    await _rewardedAd!.show(
+      onUserEarnedReward: (_, __) => _grant24HourPriority(),
+    );
   }
 
-  Future<void> _buyProduct(ProductDetails product) async {
-    final PurchaseParam purchaseParam = PurchaseParam(productDetails: product);
-    await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+  Future<void> _grant24HourPriority() async {
+    final user = _auth.currentUser!;
+    final collection = _isProviderUser ? 'providers' : 'users';
+    final end = Timestamp.fromDate(DateTime.now().add(const Duration(hours: 24)));
+
+  
+    await FirebaseFirestore.instance
+  .collection(collection)
+  .doc(user.uid)
+  .set({
+    'adFree': true,
+    'priorityUntil': end,
+  }, SetOptions(merge: true));
+
+
+    setState(() => _priorityUntil = end);
+    
+
+ if (mounted) {
+        setState(() {
+          _isAdFree = true;
+         
+        });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.green,
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Text(
+              '24-Hour Priority Activated!',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+        
+    );
+ }
+  }
+
+  Future<void> _subscribeMonthly() async {
+    // Placeholder — Replace with RevenueCat / Stripe later
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFFFF6200),
+        content: Text(
+          'Monthly Subscription - Coming Soon!',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  // ────────────────────── UI ──────────────────────
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBarWidget(
+        title: 'Subscription',
+        profilePicUrl: profilePicUrl, // Will be loaded dynamically if needed
+        showNotifications: true,
+        isProvider: _isProviderUser,
+       
+      ),
+      drawer: AppBarWidget.buildDrawer(context: context, isProvider: _isProviderUser),
+      body: Stack(
+        children: [
+          // Gradient Background
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFF6200), Color(0xFFFF8A50)],
+              ),
+            ),
+          ),
+
+          // Main Content
+          SafeArea(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 40),
+
+                        // Crown Icon
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))
+                            ],
+                          ),
+                          child: const Icon(Icons.auto_awesome, size: 80, color: Color(0xFFFF6200)),
+                          ).animate(controller: _pulseController).scale(
+                          begin: const Offset(1.0, 1.0),
+                          end: const Offset(1.15, 1.15),
+                          duration: 2.seconds,
+                          curve: Curves.easeInOut,
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        Text(
+                          _isAdFree ? 'You\'re Premium!' : 'Go Premium',
+                          style: GoogleFonts.poppins(
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        Text(
+                          _isAdFree
+                              ? 'Enjoy ad-free experience and priority visibility'
+                              : 'Remove ads and get priority in searches',
+                          style: GoogleFonts.poppins(fontSize: 18, color: Colors.white70),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Status Chips
+                        if (_isAdFree) ...[
+                          _statusChip(
+                            'Ad-Free Experience',
+                            Icons.block,
+                            Colors.green,
+                          ),
+                          if (_priorityUntil != null)
+                            _statusChip(
+                              'Priority Until ${_formatDate(_priorityUntil!)}',
+                              Icons.trending_up,
+                              Colors.orange,
+                            ),
+                          if (_subscriptionEnd != null)
+                            _statusChip(
+                              'Subscribed Until ${_formatDate(_subscriptionEnd!)}',
+                              Icons.star_rounded,
+                              Colors.purple,
+                            ),
+                        ],
+
+                        const SizedBox(height: 40),
+
+                        // Subscription Cards
+                        if (!_isAdFree) ...[
+                          _subscriptionCard(
+                            title: '24-Hour Priority',
+                            subtitle: 'Watch ad • Instant activation',
+                            price: 'FREE',
+                            color: Colors.green,
+                            icon: Icons.play_circle_fill,
+                            onTap:  _isAdLoading
+      ? null
+      : () async {
+          // This is safe – no type error
+          if (!mounted) return;
+          await _showRewardedAd();
+        },
+                            isLoading: _isAdLoading,
+                          ),
+                          const SizedBox(height: 20),
+                          _subscriptionCard(
+                            title: 'Monthly Premium',
+                            subtitle: 'Ad-free • Top priority • Coming soon',
+                            price: 'SOON',
+                            color: const Color(0xFFFF6200),
+                            icon: Icons.diamond,
+                            onTap: _subscribeMonthly,
+                            gradient: true,
+                          ),
+                        ] else
+                          Container(
+                            padding: const EdgeInsets.all(32),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white30),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.check_circle, size: 80, color: Colors.white),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'You\'re all set!',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  'Enjoy your premium benefits',
+                                  style: GoogleFonts.poppins(color: Colors.white70),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isAdFree) const BannerAdWidget(),
+          /**_isProvider
+              ? const ProviderBottomNavBar(currentIndex: 5)
+              : const BottomNavBar(currentIndex: 5),*/
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String text, IconData icon, Color color) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Text(text, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.3);
+  }
+
+  Widget _subscriptionCard({
+    required String title,
+    required String subtitle,
+    required String price,
+    required Color color,
+    required IconData icon,
+    GestureTapCallback? onTap,  // This allows async functions!
+    bool isLoading = false,
+    bool gradient = false,
+  }) {
+    return GestureDetector(
+      onTap: isLoading ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: gradient
+              ? const LinearGradient(colors: [Color(0xFFFF6200), Color(0xFFFF4500)])
+              : null,
+          color: gradient ? null : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 10))
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: gradient ? Colors.white24 : color.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 40, color: gradient ? Colors.white : color),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: gradient ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: gradient ? Colors.white70 : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              children: [
+                if (isLoading)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
+                  )
+                else
+                  Text(
+                    price,
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: gradient ? Colors.white : color,
+                    ),
+                  ),
+                if (!isLoading && price != 'SOON')
+                  const Icon(Icons.arrow_forward_ios, color: Colors.white70),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 400.ms).slideX(begin: -0.3);
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    return DateFormat('MMM d, h:mm a').format(timestamp.toDate());
   }
 
   @override
   void dispose() {
-     WidgetsBinding.instance.removeObserver(this);
+    _pulseController.dispose();
     _rewardedAd?.dispose();
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Subscription'),
-        backgroundColor: Theme.of(context).primaryColor,
-      ),
-      body: Padding(
-        padding: EdgeInsets.all(16),
-        child: _isLoading
-            ? Center(child: CircularProgressIndicator())
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _isAdFree ? 'You are ad-free!' : 'Go Ad-Free with Premium',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  SizedBox(height: 16),
-                  if (_isAdFree)
-                    Text(
-                      'Enjoy an ad-free experience with priority support, faster provider matching, and top search ranking (for providers)!',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    )
-                  else ...[
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Choose a Premium Plan:',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        SizedBox(height: 8),
-                        ..._subscriptionPackages.map((package) {
-                          final product = _products.firstWhere(
-                            (p) => p.id == package['productId'],
-                            orElse: () => ProductDetails(
-                              id: package['productId'],
-                              title: 'Not Available',
-                              description: '',
-                              price: 'N/A',
-                              rawPrice: 0.0,
-                              currencyCode: '',
-                            ),
-                          );
-                          return Card(
-                            margin: EdgeInsets.symmetric(vertical: 8),
-                            child: ListTile(
-                              title: Text(package['name']),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(package['description']),
-                                  Text('Duration: ${package['duration']}'),
-                                  Text('Price: ${product.price}'),
-                                ],
-                              ),
-                              trailing: ElevatedButton(
-                                onPressed: product.price == 'N/A'
-                                    ? null
-                                    : () => _buyProduct(product),
-                                child: Text('Subscribe'),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ],
-                    ),
-                    SizedBox(height: 20),
-                    Text(
-                      _hasTemporaryPriority
-                          ? 'You have temporary priority!'
-                          : 'Earn Temporary Priority',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      _hasTemporaryPriority
-                          ? 'Enjoy priority for the next 24 hours!'
-                          : 'Watch a video to get 24 hours of priority matching and support.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    SizedBox(height: 16),
-                    if (!_hasTemporaryPriority)
-                      ElevatedButton(
-                        onPressed: _showRewardedAd,
-                        child: Text('Watch Ad for Priority'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                      ),
-                  ],
-                ],
-              ),
-      ),
-    );
   }
 }

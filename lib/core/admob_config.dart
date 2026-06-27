@@ -8,26 +8,21 @@ class AdmobConfig {
   String _appId = 'ca-app-pub-6203298272391383~6221390463';
 
   // Ad Unit IDs (replace with your actual Ad Unit IDs)
-  Map<String, String> _adUnitIds = {
-    'banner': 'ca-app-pub-6203298272391383/8267865654',
-    'interstitial': 'ca-app-pub-6203298272391383/7833855035',
-    'rewarded':'ca-app-pub-6203298272391383/5544798694',
+  
+    String _banner = 'ca-app-pub-6203298272391383/8267865654';
+   String _interstitial = 'ca-app-pub-6203298272391383/7833855035';
+    String _rewarded = 'ca-app-pub-6203298272391383/5544798694' ;
+     String _native = 'ca-app-pub-6203298272391383/7513189431' ;
     // Add more ad units as needed (e.g., 'rewarded', 'native')
-  };
+  
 
   // Getter for App ID
   String get appId => _appId;
 
+String get banner => _banner;
+String get native => _native;
+String get interstitial => _interstitial;
+String get rewarded => _rewarded;
   // Getter for Ad Unit IDs
-  String? getAdUnitId(String key) => _adUnitIds[key];
-
-  // Optional: Setters (if you need to update dynamically)
-  void setAppId(String id) => _appId = id;
-  void setAdUnitId(String key, String id) => _adUnitIds[key] = id;
-
-  // Optional: Clear method
-  void clear() {
-    _appId = '';
-    _adUnitIds.clear();
-  }
+ 
 }

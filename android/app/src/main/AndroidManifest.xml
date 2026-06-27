@@ -6,10 +6,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- For image_picker -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- For Android 12 and below -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <!-- For Android 13+ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    
+
     <application
         android:label="padue"
         android:name="${applicationName}"
