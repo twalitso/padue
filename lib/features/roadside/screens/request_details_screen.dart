@@ -334,7 +334,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
               mapController: _mapController,
               options: MapOptions(center: _userPos, zoom: 15),
               children: [
-                TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c']),
+                TileLayer(
+  urlTemplate: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+  userAgentPackageName: 'com.twalitso.padue'
+  , subdomains: const ['a', 'b', 'c']),
                 if (_routePoints.isNotEmpty)
                   PolylineLayer(polylines: [Polyline(points: _routePoints, color: Colors.blue, strokeWidth: 5)]),
                 MarkerLayer(markers: [

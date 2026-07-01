@@ -348,7 +348,11 @@ class _ViewProviderProfileScreenState extends State<ViewProviderProfileScreen> w
                                 initialZoom: 15,
                               ),
                               children: [
-                                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+                                // Best quick fix (Humanitarian style - more tolerant)
+TileLayer(
+  urlTemplate: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+  userAgentPackageName: 'com.twalitso.padue',
+),
                                 MarkerLayer(markers: [
                                   Marker(
                                     point: LatLng(_provider!.location.latitude, _provider!.location.longitude),

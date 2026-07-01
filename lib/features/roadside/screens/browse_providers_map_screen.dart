@@ -233,7 +233,10 @@ class _BrowseProvidersMapScreenState extends State<BrowseProvidersMapScreen> {
                         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
                       ),
                       children: [
-                        TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c']),
+                       TileLayer(
+  urlTemplate: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+  userAgentPackageName: 'com.twalitso.padue',
+  subdomains: const ['a', 'b', 'c']),
                         MarkerLayer(markers: markers),
                       ],
                     );

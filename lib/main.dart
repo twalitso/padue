@@ -12,6 +12,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:padue/features/auth/screens/provider_signup_screen.dart';
 import 'package:padue/features/auth/screens/user_signup_screen.dart';
 import 'package:padue/features/roadside/screens/browse_providers_map_screen.dart';
+import 'package:padue/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Add this for caching
 import 'package:padue/core/firestore_service.dart';
 import 'package:padue/core/utils.dart';
@@ -42,40 +43,85 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterL
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  //await Firebase.initializeApp();
 }
-
-
 
 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-    await dotenv.load(fileName: ".env");
 
-  // 1. FASTEST FIRST: Firebase + Local Setup
-  await Firebase.initializeApp();
+  await dotenv.load(fileName: ".env");
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   FirebaseFirestore.instance.settings = const Settings(
-  persistenceEnabled: true,
-  cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
+   FirebaseMessaging.instance.requestPermission();
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+const AndroidInitializationSettings android =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+
+const DarwinInitializationSettings ios = DarwinInitializationSettings(
+  requestAlertPermission: true,
+  requestBadgePermission: true,
+  requestSoundPermission: true,
 );
-  await FirebaseMessaging.instance.requestPermission();
-  // OneSignal initialization using env
-  final String oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'] ?? 'aa6821d3-e2ec-45d5-828f-fcae178accf7'; // fallback if not loaded
-  OneSignal.initialize(oneSignalAppId);
-  OneSignal.Notifications.requestPermission(true);
 
-  // 2. LOCAL NOTIFICATIONS (no network)
-  const AndroidInitializationSettings android = AndroidInitializationSettings('@mipmap/ic_launcher');
-  await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: android));
+const InitializationSettings initializationSettings = InitializationSettings(
+  android: android,
+  iOS: ios,           // ← This was missing
+);
 
-  // 3. BACKGROUND HANDLER
+await flutterLocalNotificationsPlugin.initialize(
+  const InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false,   // request later
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
+  ),
+);
+
+
+
+// After await flutterLocalNotificationsPlugin.initialize(...);
+
+if (defaultTargetPlatform == TargetPlatform.iOS) {
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>()
+      ?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+}
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // 4. NON-BLOCKING: Fire-and-forget ALL network calls
-  unawaited(_warmupApp());
+  try {
+    final String oneSignalAppId =
+        dotenv.env['ONESIGNAL_APP_ID'] ??
+        'aa6821d3-e2ec-45d5-828f-fcae178accf7';
+
+    OneSignal.initialize(oneSignalAppId);
+    OneSignal.Notifications.requestPermission(true);
+  } catch (e) {
+    debugPrint('OneSignal failed: $e');
+  }
 
   runApp(const PadueApp());
+
+  Future.microtask(_warmupApp);
 }
 
 // FIRE-AND-FORGET: All heavy work

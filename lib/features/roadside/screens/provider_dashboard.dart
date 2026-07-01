@@ -924,7 +924,8 @@ void _showMapBottomSheet(LatLng end, String requestId, Map<String, dynamic> user
                         ),
                         children: [
                           TileLayer(
-                            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  urlTemplate: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+  userAgentPackageName: 'com.twalitso.padue',
                             subdomains: const ['a', 'b', 'c'],
                             tileProvider: NetworkTileProvider(),
                           ),
