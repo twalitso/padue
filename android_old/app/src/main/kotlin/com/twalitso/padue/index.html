@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Account</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="form-container">
+    <h2>Delete Your Account</h2>
+    <p>Enter your email to request account deletion. We’ll process it within 30 days and send a confirmation.</p>
+    <form name="delete-account" netlify method="POST" data-netlify="true" id="deleteForm">
+      <input type="hidden" name="form-name" value="delete-account">
+      <input type="email" name="email" placeholder="Your email" required>
+      <button type="submit">Submit Deletion Request</button>
+    </form>
+    <p><a href="https://x.ai/privacy">Privacy Policy</a></p>
+  </div>
+  <script>
+    document.getElementById('deleteForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const formData = new FormData(form);
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          body: formData
+        });
+        if (response.ok) {
+          alert('Deletion request submitted. You’ll receive a confirmation soon.');
+        } else {
+          alert('Failed to submit request. Please try again.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    });
+  </script>
+</body>
+</html>

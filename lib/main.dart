@@ -69,29 +69,35 @@ Future<void> main() async {
 
 const AndroidInitializationSettings android =
     AndroidInitializationSettings('@mipmap/ic_launcher');
-
-const DarwinInitializationSettings ios = DarwinInitializationSettings(
-  requestAlertPermission: true,
-  requestBadgePermission: true,
-  requestSoundPermission: true,
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  'messages_channel',
+  'Messages',
+  description: 'Chat notifications',
+  importance: Importance.high,
 );
 
-const InitializationSettings initializationSettings = InitializationSettings(
-  android: android,
-  iOS: ios,           // ← This was missing
+await flutterLocalNotificationsPlugin
+    .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>()
+    ?.createNotificationChannel(channel);
+
+
+
+
+const DarwinInitializationSettings iOS = DarwinInitializationSettings(
+  requestAlertPermission: false,
+  requestBadgePermission: false,
+  requestSoundPermission: false,
 );
+
+
+
+final InitializationSettings settings =
+    InitializationSettings(android: android, iOS: iOS);
 
 await flutterLocalNotificationsPlugin.initialize(
-  const InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    iOS: DarwinInitializationSettings(
-      requestAlertPermission: false,   // request later
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    ),
-  ),
+  settings: settings,
 );
-
 
 
 // After await flutterLocalNotificationsPlugin.initialize(...);

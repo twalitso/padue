@@ -549,49 +549,55 @@ Future<void> _loadNativeAds() async {
     }
   }
 
-  Future<void> _setupNotifications() async {
-    const channel = AndroidNotificationChannel(
-      'high_importance_channel',
-      'High Importance Notifications',
-      importance: Importance.max,
-    );
-    await _notificationsPlugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
-      ),
-      onDidReceiveNotificationResponse: (details) {
-        final data = jsonDecode(details.payload ?? '{}');
-        if (data['type'] == 'request' && mounted) {
-          Navigator.pushNamed(context, '/request_status');
-        } else if (data['type'] == 'message' && mounted) {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const InboxScreen(isProvider: false)));
-        }
-      },
-    );
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
-  }
+Future<void> _setupNotifications() async {
+  const channel = AndroidNotificationChannel(
+    'high_importance_channel',
+    'High Importance Notifications',
+    importance: Importance.max,
+  );
 
-  void _showNotification(RemoteMessage message) {
-    final notification = message.notification!;
-    _notificationsPlugin.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
-        android: const AndroidNotificationDetails(
-          'high_importance_channel',
-          'High Importance Notifications',
-          importance: Importance.max,
-          priority: Priority.high,
-        ),
-        iOS: const DarwinNotificationDetails(),
+  await _notificationsPlugin.initialize(
+    settings: const InitializationSettings(        // ← Add 'settings:' here
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    ),
+    onDidReceiveNotificationResponse: (details) {
+      final data = jsonDecode(details.payload ?? '{}');
+      if (data['type'] == 'request' && mounted) {
+        Navigator.pushNamed(context, '/request_status');
+      } else if (data['type'] == 'message' && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const InboxScreen(isProvider: false)),
+        );
+      }
+    },
+  );
+
+  await _notificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+}
+
+void _showNotification(RemoteMessage message) {
+  final notification = message.notification!;
+  
+  _notificationsPlugin.show(
+    id: notification.hashCode,                    // ← Required named parameter
+    title: notification.title,
+    body: notification.body,
+    notificationDetails: NotificationDetails(     // ← Changed from positional
+      android: const AndroidNotificationDetails(
+        'high_importance_channel',
+        'High Importance Notifications',
+        importance: Importance.max,
+        priority: Priority.high,
       ),
-      payload: jsonEncode(message.data),
-    );
-  }
+      iOS: const DarwinNotificationDetails(),
+    ),
+    payload: jsonEncode(message.data),
+  );
+}
 
 @override
 Widget build(BuildContext context) {

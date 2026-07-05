@@ -539,7 +539,7 @@ Future<void> _refreshUserProfileAndLocation() async {
       importance: Importance.max,
     );
     await _notificationsPlugin.initialize(
-      const InitializationSettings(
+     settings:  const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
@@ -560,10 +560,10 @@ Future<void> _refreshUserProfileAndLocation() async {
   void _showNotification(RemoteMessage message) {
     final notification = message.notification!;
     _notificationsPlugin.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
+      id : notification.hashCode,
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',

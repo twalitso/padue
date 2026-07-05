@@ -557,12 +557,12 @@ Future<void> storeDeviceToken(String token) async {
           to: token,
           data: {'title': 'New Message', 'body': text},
         );
-        await flutterLocalNotificationsPlugin.show(
+        /**await flutterLocalNotificationsPlugin.show(
           0,
           'New Message',
           text,
           const NotificationDetails(android: AndroidNotificationDetails('channel_id', 'Messages')),
-        );
+        );*/
       } catch (e) {
         
       }

@@ -502,7 +502,7 @@ Future.microtask(() {
       importance: Importance.max,
     );
     await _notificationsPlugin.initialize(
-      const InitializationSettings(
+      settings : const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
@@ -523,10 +523,10 @@ Future.microtask(() {
   void _showNotification(RemoteMessage message) {
     final n = message.notification!;
     _notificationsPlugin.show(
-      n.hashCode,
-      n.title,
-      n.body,
-      NotificationDetails(
+    id :  n.hashCode,
+      title:  n.title,
+      body: n.body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails('high_importance_channel', 'High Importance Notifications'),
         iOS: const DarwinNotificationDetails(),
       ),
@@ -918,9 +918,11 @@ void _showMapBottomSheet(LatLng end, String requestId, Map<String, dynamic> user
                     : FlutterMap(
                         mapController: MapController(),
                         options: MapOptions(
-                          center: _mapCenter,
-                          zoom: 15.5,
-                          interactiveFlags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                          initialCenter: _mapCenter!,
+                          initialZoom: 15.5,
+                          interactionOptions: InteractionOptions(   // ← interactiveFlags moved here
+    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+  ),
                         ),
                         children: [
                           TileLayer(

@@ -111,11 +111,11 @@ Future<void> _markAllAsRead() async {
       'High Importance Notifications',
       importance: Importance.max,
     );
-    await _notificationsPlugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
-      ),
+     await _notificationsPlugin.initialize(
+    settings: const InitializationSettings(        // ← Add 'settings:' here
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    ),
       onDidReceiveNotificationResponse: (details) {
         final data = jsonDecode(details.payload ?? '{}');
         if (data['type'] == 'message') {
@@ -131,10 +131,10 @@ Future<void> _markAllAsRead() async {
   void _showNotification(RemoteMessage message) {
     final notification = message.notification!;
     _notificationsPlugin.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
+      id : notification.hashCode,
+      title: notification.title,
+      body: notification.body,
+     notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',

@@ -332,7 +332,7 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
             flex: 3,
             child: FlutterMap(
               mapController: _mapController,
-              options: MapOptions(center: _userPos, zoom: 15),
+              options: MapOptions(initialCenter: _userPos!, initialZoom: 15),
               children: [
                 TileLayer(
   urlTemplate: 'https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',

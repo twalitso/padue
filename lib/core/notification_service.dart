@@ -160,7 +160,7 @@ class NotificationService {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iOS = DarwinInitializationSettings();
     const settings = InitializationSettings(android: android, iOS: iOS);
-    await _notifications.initialize(settings);
+    await _notifications.initialize(settings: settings);
   }
 
   /// Show local notification
@@ -173,7 +173,13 @@ class NotificationService {
     );
     const iOSDetails = DarwinNotificationDetails();
     const details = NotificationDetails(android: androidDetails, iOS: iOSDetails);
-    await _notifications.show(0, title, body, details, payload: payload);
+  await _notifications.show(
+  id: 0,
+  title: title,
+  body: body,
+  notificationDetails: details,     // ← This was the problem
+  payload: payload,
+);
   }
 
   /// Listen for new notifications in Firestore and show locally

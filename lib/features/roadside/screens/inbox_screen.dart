@@ -69,7 +69,7 @@ class _InboxScreenState extends State<InboxScreen> {
     );
 
     await _notifications.initialize(
-      const InitializationSettings(
+      settings : const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
@@ -84,10 +84,10 @@ class _InboxScreenState extends State<InboxScreen> {
   void _showNotification(RemoteMessage message) {
     final n = message.notification!;
     _notifications.show(
-      n.hashCode,
-      n.title,
-      n.body,
-      const NotificationDetails(
+     id: n.hashCode,
+     title:  n.title,
+      body: n.body,
+      notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',
