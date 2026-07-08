@@ -7,7 +7,9 @@ import 'package:padue/features/auth/models/user_profile.dart';
 import 'package:padue/features/roadside/models/provider.dart' as provider_model;
 import 'package:padue/features/roadside/screens/inbox_screen.dart';
 import 'package:padue/features/roadside/screens/notifications_screen.dart';
+import 'package:padue/features/roadside/screens/provider_dashboard.dart';
 import 'package:padue/features/roadside/screens/provider_profile_screen.dart'; // New import
+import 'package:padue/features/roadside/screens/request_screen.dart';
 import 'package:padue/features/roadside/screens/request_status.dart';
 import 'package:padue/features/roadside/screens/subscription_screen.dart';
 import 'package:padue/features/roadside/screens/user_profile_screen.dart';
@@ -108,63 +110,73 @@ static Future<void> clearAllCache() async {
       ),
       actions: [
         if (showNotifications)
-          StreamBuilder<int>(
-            stream: _getUnreadNotificationsCount(),
-            initialData: 0,
-            builder: (context, snapshot) {
-              int unreadCount = snapshot.data ?? 0;
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications, color: Color(0xFFFF6200)),
-                    tooltip: 'Notifications',
-                    onPressed: () {
-                      if (onInterstitialAd != null) {
-                        onInterstitialAd!(() {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => NotificationsScreen(isProvider: isProvider),
-                            ),
-                          );
-                        });
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => NotificationsScreen(isProvider: isProvider),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : unreadCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+  StreamBuilder<int>(
+    stream: _getUnreadNotificationsCount(),
+    initialData: 0,
+    builder: (context, snapshot) {
+      int unreadCount = snapshot.data ?? 0;
+
+      void openNotifications() {
+        if (onInterstitialAd != null) {
+          onInterstitialAd!(() {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => NotificationsScreen(isProvider: isProvider),
+              ),
+            );
+          });
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NotificationsScreen(isProvider: isProvider),
+            ),
+          );
+        }
+      }
+
+      return GestureDetector(
+        onTap: openNotifications,
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications, color: Color(0xFFFF6200)),
+              tooltip: 'Notifications',
+              onPressed: openNotifications,
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
                     ),
-                ],
-              );
-            },
-          ),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : unreadCount.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  ),
        if (ModalRoute.of(context)?.settings.name == '/browse_providers' ||
       ModalRoute.of(context)?.settings.name == '/browse_providers_map')
     Consumer<BrowseProvidersState>(
@@ -259,6 +271,35 @@ static Future<void> clearAllCache() async {
                 );
               },
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.person, color: Color(0xFFFF6200)),
+            title: const Text('Home'),
+            onTap: () {
+              if (onInterstitialAd != null) {
+                onInterstitialAd!(() {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => isProvider
+                          ? ProviderDashboard()
+                          :  RequestScreen(),
+                    ),
+                  );
+                });
+              } else {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => isProvider
+                        ? ProviderDashboard()
+                        :  RequestScreen(),
+                  ),
+                );
+              }
+            },
           ),
           ListTile(
             leading: const Icon(Icons.person, color: Color(0xFFFF6200)),

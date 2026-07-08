@@ -213,6 +213,8 @@ String formatLastActive(DateTime? lastActive) {
       'providerId': providerId,
       'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
+      'lastMessageTime': FieldValue.serverTimestamp(),  // add
+  'lastMessageAt': FieldValue.serverTimestamp(),  
     });
     return chatDoc.id;
   }
@@ -282,7 +284,7 @@ String formatLastActive(DateTime? lastActive) {
 
   await chatRef.update({
     'lastMessage': _text,
-    'lastMessageTime': now,
+    'lastMessageTime': FieldValue.serverTimestamp(),
      'lastMessageAt': FieldValue.serverTimestamp(),
     'unreadCount': FieldValue.increment(1),
   });

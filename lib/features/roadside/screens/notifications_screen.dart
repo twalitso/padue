@@ -3,15 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:padue/core/widgets/app_bar_widget.dart';
 import 'package:padue/features/roadside/screens/banner_ad_widget.dart';
-import 'package:padue/features/roadside/screens/bottom_nav_bar.dart';
 import 'package:padue/features/roadside/screens/post_detail_screen.dart';
-import 'package:padue/features/roadside/screens/provider_bottom_nav_bar.dart';
-import 'package:padue/core/firestore_service.dart';
-import 'package:padue/features/roadside/models/provider.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final bool isProvider;
-
   const NotificationsScreen({super.key, required this.isProvider});
 
   @override
@@ -20,48 +15,51 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _isAdFree = false;
-  bool _isLoading = true;
-   dynamic profile;
   String? profilePicUrl;
-   bool _isProviderUser = false;
-    final FirestoreService _firestore = FirestoreService();
+  bool _isProviderUser = false;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    _loadProfile(); // Fire-and-forget, don't block UI
   }
 
   Future<void> _loadProfile() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      setState(() => _isLoading = true);
-      var providerDoc = await FirebaseFirestore.instance.collection('providers').doc(user.uid).get();
-      if (providerDoc.exists && mounted) {
-        Provider provider = Provider.fromFirestore(providerDoc);
-         final providerProfile = await _firestore.getProviderProfile(user.uid);
-        setState(() {
-          _isAdFree = provider.adFree;
-          _isLoading = false;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || !mounted) return;
 
-            _isProviderUser = true;
-      
-        profile = providerProfile;
-        profilePicUrl = providerProfile?.profilePicUrl ?? provider.profilePicUrl;
+    try {
+      // Single read: try providers first
+      final providerDoc = await FirebaseFirestore.instance
+          .collection('providers')
+          .doc(user.uid)
+          .get();
+
+      if (providerDoc.exists && mounted) {
+        final data = providerDoc.data()!;
+        setState(() {
+          _isAdFree = data['adFree'] ?? false;
+          _isProviderUser = true;
+          profilePicUrl = data['profilePicUrl'];
         });
-      } else {
-        var userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        final userProfile = await _firestore.getUserProfile(user.uid);
+        return;
+      }
+
+      // Fall back to users
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (mounted) {
         setState(() {
           _isAdFree = userDoc.exists ? (userDoc.data()?['adFree'] ?? false) : false;
-          _isLoading = false;
-
-           _isProviderUser = false;
-      
-        profile = userProfile;
-        profilePicUrl = profile?.profilePicUrl;
+          _isProviderUser = false;
+          profilePicUrl = userDoc.data()?['profilePicUrl'];
         });
       }
+    } catch (e) {
+      debugPrint('Profile load error: $e');
     }
   }
 
@@ -76,125 +74,160 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Scaffold(
       appBar: AppBarWidget(
-           title:  'Notifications',
-        profilePicUrl:profilePicUrl,
+        title: 'Notifications',
+        profilePicUrl: profilePicUrl,
         showNotifications: true,
-       isProvider: widget.isProvider,
-        ),
-        drawer: AppBarWidget.buildDrawer(
+        isProvider: widget.isProvider,
+      ),
+      drawer: AppBarWidget.buildDrawer(
         context: context,
         isProvider: widget.isProvider,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection(collection)
-                  .doc(user.uid)
-                  .collection('notifications')
-                  .where('type', isNotEqualTo: 'message')
-                  .orderBy('type')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      body: StreamBuilder<QuerySnapshot>(
+        // Simpler query: no isNotEqualTo, filter in code
+        stream: FirebaseFirestore.instance
+            .collection(collection)
+            .doc(user.uid)
+            .collection('notifications')
+            .orderBy('timestamp', descending: true)
+            .limit(50)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error loading notifications: ${snapshot.error}'));
-                }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
 
-                final notifications = snapshot.data?.docs ?? [];
+          // Filter out messages in code (faster than isNotEqualTo query)
+          final allDocs = snapshot.data?.docs ?? [];
+          final notifications = allDocs
+              .where((n) => (n.data() as Map<String, dynamic>)['type'] != 'message')
+              .toList();
 
-                if (notifications.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.notifications_off, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No notifications yet',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+          if (notifications.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.notifications_off, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No notifications yet'),
+                ],
+              ),
+            );
+          }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: notifications.length,
-                  itemBuilder: (context, index) {
-                    final notification = notifications[index];
-                    final data = notification.data() as Map<String, dynamic>;
-                    return Card(
-                      elevation: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        title: Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(data['body'] ?? 'No Body'),
-                        trailing: data['read'] == true
-                            ? null
-                            : const Icon(Icons.circle, color: Colors.blue, size: 10),
-                        onTap: () async {
-                          await notification.reference.update({'read': true});
-                          final type = data['type'] as String?;
-                          final id = data['id'] as String?;
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: notifications.length,
+            itemBuilder: (context, index) {
+              final notification = notifications[index];
+              final data = notification.data() as Map<String, dynamic>;
+              return _NotificationTile(
+                data: data,
+                onTap: () => _handleNotificationTap(context, data, notification),
+              );
+            },
+          );
+        },
+      ),
+      bottomNavigationBar: !_isAdFree ? const BannerAdWidget() : null,
+    );
+  }
 
-                          switch (type) {
-                            case 'request':
-                            case 'status_update':
-                              if (id != null) {
-                                Navigator.pushNamed(
-                                  context,
-                                  widget.isProvider ? '/provider_dashboard' : '/request_status',
-                                );
-                              }
-                              break;
-                            case 'profile_update':
-                              Navigator.pushNamed(
-                                context,
-                                widget.isProvider ? '/provider_profile' : '/profile',
-                              );
-                              break;
-                            case 'payment':
-                              Navigator.pushNamed(context, '/subscription');
-                              break;
-                            case 'comment':
-                            case 'like':
-                              if (id != null) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PostDetailScreen(postId: id),
-                                  ),
-                                );
-                              }
-                              break;
-                            default:
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Tapped: ${data['title']}')),
-                              );
-                          }
-                        },
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!_isAdFree) const BannerAdWidget(),
-        /**   widget.isProvider
-              ? const ProviderBottomNavBar(currentIndex: 3)
-              : const BottomNavBar(currentIndex: 3),*/
-        ],
+  Future<void> _handleNotificationTap(
+    BuildContext context,
+    Map<String, dynamic> data,
+    DocumentSnapshot doc,
+  ) async {
+    await doc.reference.update({'read': true});
+    final type = data['type'] as String?;
+    final id = data['id'] as String?;
+
+    switch (type) {
+      case 'request':
+      case 'status_update':
+        Navigator.pushNamed(
+          context,
+          widget.isProvider ? '/provider_dashboard' : '/request_status',
+        );
+      case 'profile_update':
+        Navigator.pushNamed(
+          context,
+          widget.isProvider ? '/provider_profile' : '/profile',
+        );
+      case 'payment':
+        Navigator.pushNamed(context, '/subscription');
+      case 'comment':
+      case 'like':
+        if (id != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => PostDetailScreen(postId: id)),
+          );
+        }
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tapped: ${data['title']}')),
+        );
+    }
+  }
+}
+
+class _NotificationTile extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback onTap;
+
+  const _NotificationTile({required this.data, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: data['read'] == true ? Colors.grey[300] : Colors.blue[100],
+          child: Icon(
+            _iconForType(data['type']),
+            color: data['read'] == true ? Colors.grey : Colors.blue,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          data['title'] ?? 'No Title',
+          style: TextStyle(
+            fontWeight: data['read'] == true ? FontWeight.normal : FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(data['body'] ?? 'No Body'),
+        trailing: data['read'] == true
+            ? null
+            : Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+        onTap: onTap,
       ),
     );
+  }
+
+  IconData _iconForType(String? type) {
+    return switch (type) {
+      'request' => Icons.local_taxi,
+      'status_update' => Icons.update,
+      'payment' => Icons.payment,
+      'comment' => Icons.comment,
+      'like' => Icons.favorite,
+      _ => Icons.notifications,
+    };
   }
 }

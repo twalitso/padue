@@ -304,9 +304,10 @@ Future<void> _loadUserProfile() async {
                                 pic: profile['profilePicUrl'],
                                 lastMessage:
                                     chat['lastMessage'] ?? 'Sent a message',
-                                time: (chat['lastMessageTime'] as Timestamp?)
-                                        ?.toDate() ??
-                                    DateTime.now(),
+                                // AFTER — safely handles missing field
+time: (chat.data() as Map<String, dynamic>)['lastMessageTime'] is Timestamp
+    ? (chat['lastMessageTime'] as Timestamp).toDate()
+    : DateTime.now(),
                                 unread: chat['unreadCount'] ?? 0,
                                 onTap: () => _openChat(chatId),
                               ),
